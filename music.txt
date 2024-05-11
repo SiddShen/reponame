@@ -1,0 +1,566 @@
+---------------------------------------------MENU---------------------------------------------------------
+
+package inventoryAppMenu;
+
+
+import java.util.Random;
+import java.util.Scanner;
+
+import invetoryInterface.Product;          //importing value object
+
+import fileImplementation1.FileSerialization;  //importing serialization class
+import fileImplementation2.FileOperation;      //importing file operations class
+
+import invetoryInterface.InventoryActivity;
+
+//import custom exceptions
+import groupExceptions.CannotAddProductException;
+import groupExceptions.ProductNotFoundException;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import DatabaseImpl.DatabaseImpl;
+import DatabaseImpl.TwoPhaseCommit;
+public class Menu {
+	 public static void main(String[] args) {
+	        Scanner sc = new Scanner(System.in);
+	        //DemoLogger log= new DemoLogger();
+	        final Logger logger= LogManager.getLogger(Menu.class);
+	        	while (true) {
+	                System.out.println("\n ----Inventory Management----\n");
+	                System.out.println("1. Add Product");
+	                System.out.println("2. Display Product");
+	                System.out.println("3. Restock Product");
+	                System.out.println("4. Place Order");
+	                System.out.println("5. View product category");
+	                System.out.println("6. Two Phase Commit");
+	                System.out.println("7. Exit");
+
+	                FileSerialization imp = new FileSerialization();
+
+	                FileOperation productManager2 = new FileOperation();
+	                
+	                
+	                DatabaseImpl db = new DatabaseImpl();
+
+	                System.out.print("Enter your choice: ");
+	                int choice = sc.nextInt();
+	            
+	                switch (choice) {
+	                case 1:
+	                	System.out.print("Enter Product ID: ");
+	                	int productId = sc.nextInt();
+	                	sc.nextLine(); // Consume the newline character
+	                	System.out.print("Enter Product Name: ");
+	                	String prodName = sc.nextLine();
+	                	System.out.print("Enter Product Category: ");
+	                	String category = sc.nextLine();
+	                	System.out.print("Enter Quantity: ");
+	                	int quantity = sc.nextInt();
+	                	sc.nextLine(); // Consume the newline character
+	                	Product product = new Product(productId, prodName, category, quantity);
+	                	
+	                	try {
+	                		//System.out.println("From serialize");
+	                		//imp.addProduct(product);
+	                		System.out.println("From Database");
+	                		
+	                		db.addProduct(product);
+	                		
+	                		//System.out.println("From serialize");
+	                		System.out.println("From file");
+	                		productManager2.addProduct(product);
+	                		logger.info("Product added succesfully");
+	                	 }catch (CannotAddProductException e) {
+                			System.out.println("Error: " + e.getMessage());
+                			//log.info("This is add log message"); 
+                			
+                	      }
+	                	
+	                	break;
+	                case 2:
+	                	//System.out.println("From ser");
+	                	//imp.displayProduct();
+	                	
+	                	System.out.println("\n");
+	                	System.out.println("From file");
+	                	productManager2.displayProduct();
+	                	System.out.println("From Database");
+	                	
+                		db.displayProduct();
+	                	     
+	                	break;
+	                case 3:
+	                	System.out.print("Enter Product ID to restock: ");
+	                	int productId1 = sc.nextInt();
+	                	System.out.println("Enter new quantity:");
+	                	int quantity1 = sc.nextInt();
+	                	sc.nextLine(); 
+	                	try {
+	                		System.out.println("From file");
+	                		productManager2.restockProduct(productId1, quantity1);
+	                	 System.out.println("From Database");
+	                	 
+	                	 db.restockProduct(productId1, quantity1);
+	                	
+	                	 System.out.println("\n");
+		                //System.out.println("From serialize");
+	                	 //productManager2.restockProduct(productId1, quantity1);
+	                	}catch (ProductNotFoundException e) {
+                			System.out.println("Error: " + e.getMessage());
+                			logger.error("This is restock log message"); 
+                			//log.makeSomeLog();
+	                	}
+	                	break;
+	                case 4:
+	                	System.out.print("Enter Order ID : ");
+	                	int orderId = sc.nextInt();
+	                	System.out.println("Enter Product ID");
+	                	int productid = sc.nextInt();
+	                	System.out.println("Enter required quantity:");
+	                	int quantitydb = sc.nextInt();
+	                	sc.nextLine(); 
+	                	try {
+	                		//System.out.println("From file");
+	                		//productManager2.restockProduct(productid, quantity1);
+	                	 System.out.println("From Database");
+	                	 
+	                	 db.placeOrder(orderId,productid, quantitydb);
+	                	
+	                	 System.out.println("\n");
+		                //System.out.println("From serialize");
+	                	 //productManager2.restockProduct(productId1, quantity1);
+	                	}catch (ProductNotFoundException e) {
+                			System.out.println("Error: " + e.getMessage());
+                			logger.error("This is restock log message"); 
+                			//log.makeSomeLog();
+	                	}
+	                	break;
+	                case 5:
+	                	
+                		db.viewProductCategory();
+          
+	                
+	                	break;
+	                case 6:
+	                	TwoPhaseCommit tp = new TwoPhaseCommit();
+	                	tp.tpCommit();
+	                	
+	                	break;
+	                case 7:	
+                       		 System.exit(0);
+                        default:
+                              System.out.println("Invalid choice. Please try again.");
+	                 }
+	             }
+	        }
+
+  }
+
+****************************************************************************************************************************************************************
+-------------------------------------------------------------------------------DBIMP----------------------------------------------------------------------------
+
+package DatabaseImpl;
+
+import java.io.*;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.Properties;
+import java.util.Scanner;
+
+import invetoryInterface.InventoryActivity;
+import invetoryInterface.Product;
+import groupExceptions.CannotAddProductException;
+import groupExceptions.ProductNotFoundException;
+
+public class DatabaseImpl implements InventoryActivity {
+
+    static Connection connection;
+
+    static Scanner scanner = new Scanner(System.in);
+
+    static Scanner read = new Scanner(System.in);
+
+    public DatabaseImpl() {
+        try {
+            Properties properties = new Properties();
+            FileInputStream input = new FileInputStream(
+                    "C:\\Users\\MSIS\\eclipse-workspace\\javaproject\\GroupWorkS\\src\\db.properties");
+            properties.load(input);
+            String connectionurl = "jdbc:sqlserver://172.16.51.64;databaseName=231047002;encrypt=true;trustServerCertificate=true;";
+            String username = properties.getProperty("username1");
+            String password = properties.getProperty("password1");
+            connection = DriverManager.getConnection(connectionurl, username, password);
+            connection.setAutoCommit(false); // Disable auto-commit
+            System.out.println("Successfully connected");
+        } catch (SQLException | IOException e) {
+            System.out.println("Error occurred in Database Initialization----");
+        }
+    }
+
+    // Method to add a new product
+    public void addProduct(Product product) throws CannotAddProductException {
+        try {
+        	
+            String query = "INSERT INTO inventory(product_id,product_name, product_category, quantity) VALUES (?, ?, ?, ?)";
+            PreparedStatement preparedStatement = connection.prepareStatement(query);
+            preparedStatement.setInt(1, product.getProductId());
+            preparedStatement.setString(2, product.getProductName());
+            preparedStatement.setString(3, product.getCategory());
+            preparedStatement.setInt(4, product.getQuantity());
+
+            int rowsAffected = preparedStatement.executeUpdate();
+
+            if (rowsAffected > 0) {
+                System.out.println("Product added successfully");
+               // throw new CannotAddProductException("Cannot add product");
+            } else {
+            	System.out.println("Failed to add product");
+            	
+            }
+            connection.commit(); // Commit transaction
+        } catch (SQLException e) {
+        	
+            System.out.println("Error occurred in Add product");
+            try {
+                connection.rollback(); // Rollback transaction if exception occurs
+                
+            } catch (SQLException rollbackException) {
+                System.out.println("Error occurred while rolling back transaction");
+            }
+        }
+    }
+
+    // Method to display products
+    public void displayProduct() {
+        try {
+            Statement statement = connection.createStatement();
+            ResultSet rs = statement.executeQuery("SELECT * FROM inventory;");
+            while (rs.next()) {
+                System.out.println(rs.getInt(1) + "    " + rs.getString(2) + "  " + rs.getString(3) + "  "
+                        + rs.getInt(4));
+            }
+        } catch (SQLException e) {
+            System.out.println("Error occurred in Display product");
+        }
+    }
+
+    // Method to restock a product
+    public void restockProduct(int productId, int quantity) throws ProductNotFoundException {
+        try {
+            String query = "UPDATE inventory SET quantity = ? WHERE product_id = ?";
+            PreparedStatement preparedStatement = connection.prepareStatement(query);
+            preparedStatement.setInt(1, quantity);
+            preparedStatement.setInt(2, productId);
+
+            int rowsAffected = preparedStatement.executeUpdate();
+
+            if (rowsAffected > 0) {
+                System.out.println("Product restocked successfully into database");
+            } else {
+                System.out.println("Failed to restock product in database");
+            }
+            connection.commit(); // Commit transaction
+        } catch (SQLException e) {
+            System.out.println("Error occurred in Restock");
+            try {
+                connection.rollback(); // Rollback transaction if exception occurs
+            } catch (SQLException rollbackException) {
+                System.out.println("Error occurred while rolling back transaction");
+            }
+        }
+    }
+
+    // Method to place an order
+    public void placeOrder(int orderId, int productId, int quantitydb) throws ProductNotFoundException {
+        try {
+        	try {
+        	    String query = "SELECT * FROM inventory WHERE product_id = ?";
+        	    PreparedStatement preparedStatement = connection.prepareStatement(query);
+        	    preparedStatement.setInt(1, productId);
+
+        	    int qu = 0;
+        	    ResultSet rs = preparedStatement.executeQuery();
+        	    while (rs.next()) {
+        	        System.out.println(rs.getInt(1) + "    " + rs.getString(2) + "  " + rs.getString(3) + "  "
+        	                + rs.getInt(4));
+        	        qu = rs.getInt(4);
+        	    }
+
+        	    if (qu < quantitydb) {
+        	        throw new ProductNotFoundException("This number of quantity is not available! Product is out of stock.");
+        	    }
+               } catch (SQLException e) {
+                   System.out.println("Error occurred in Display product");
+                   
+               }
+        	
+            String insertOrderQuery = "INSERT INTO orders(order_id,product_id,quantity) VALUES (?, ?, ?)";
+            PreparedStatement preparedStatement = connection.prepareStatement(insertOrderQuery);
+            preparedStatement.setInt(1, orderId);
+            preparedStatement.setInt(2, productId);
+            preparedStatement.setInt(3, quantitydb);
+            preparedStatement.executeUpdate();
+
+            String updateInventoryQuery = "UPDATE inventory SET quantity = quantity - ? WHERE product_id = ?";
+            PreparedStatement updateStatement = connection.prepareStatement(updateInventoryQuery);
+            updateStatement.setInt(1, quantitydb);
+            updateStatement.setInt(2, productId);
+
+            int rowsAffected1 = updateStatement.executeUpdate();
+
+            if (rowsAffected1 > 0) {
+                System.out.println("Product restocked successfully into database");
+            } else {
+                System.out.println("Failed to restock product in database");
+            }
+            connection.commit(); // Commit transaction
+        } catch (SQLException e) {
+            System.out.println("Error occurred in Place order");
+            try {
+                connection.rollback(); // Rollback transaction if exception occurs
+            } catch (SQLException rollbackException) {
+                System.out.println("Error occurred while rolling back transaction");
+            }
+        }
+    }
+
+    // Method to view product categories
+    public void viewProductCategory() {
+        try {
+            String query = "SELECT product_category, count(*) as no_of_categories FROM inventory group by product_category";
+            Statement statement = connection.createStatement();
+            ResultSet rs = statement.executeQuery(query);
+
+            while (rs.next()) {
+                System.out.println(rs.getString(1) + "    " + rs.getInt(2));
+            }
+        } catch (SQLException e) {
+            System.out.println("Error occurred in View Category");
+        }
+    }
+
+    /*
+    public static void main(String[] args) {
+        DatabaseImpl imp = new DatabaseImpl();
+
+        while (true) {
+            System.out.println("\n Management System");
+
+            System.out.println("1. Add product");
+            System.out.println("2. Display product");
+            System.out.println("3. Restock product");
+            System.out.println("4. Quit");
+
+            System.out.print("Enter your choice: ");
+            int choice = read.nextInt();
+
+            switch (choice) {
+                case 1:
+                    System.out.print("Enter Product ID: ");
+                    int productId = scanner.nextInt();
+                    scanner.nextLine(); // Consume the newline character
+                    System.out.print("Enter Product Name: ");
+                    String prodName = scanner.nextLine();
+                    System.out.print("Enter Product Category: ");
+                    String category = scanner.nextLine();
+                    System.out.print("Enter Quantity: ");
+                    int quantity = scanner.nextInt();
+                    scanner.nextLine(); // Consume the newline character
+                    Product product = new Product(productId, prodName, category, quantity);
+                    try {
+                        imp.addProduct(product);
+                    } catch (CannotAddProductException e) {
+                        System.out.println("Error: " + e.getMessage());
+                    }
+                    break;
+
+                case 2:
+                    imp.displayProduct();
+                    break;
+
+                case 3:
+                    try {
+                        imp.restockProduct(13, 20);
+                    } catch (ProductNotFoundException e) {
+
+                    }
+                    break;
+
+                case 4:
+                    System.out.println("Exiting System");
+                    try {
+                        if (connection != null) {
+                            connection.close();
+                        }
+                    } catch (SQLException e) {
+                        System.out.println("Error occurred while closing connection");
+                    }
+                    System.exit(0);
+
+                default:
+                    System.out.println("Invalid choice. Please try again.");
+            }
+        }
+    }
+    */
+}
+
+
+***********************************************************************************************************************************************************************************
+----------------------------------------TWO PHASE COMMIT---------------------------------------------------------------------
+
+package DatabaseImpl;
+import java.io.*;
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.Properties;
+import java.util.Scanner;
+
+import invetoryInterface.InventoryActivity;
+import invetoryInterface.Product;
+import groupExceptions.CannotAddProductException;
+import groupExceptions.ProductNotFoundException;
+
+public class TwoPhaseCommit {
+	static Connection connection1;
+	static Connection connection2;
+	static boolean flag1=false; 
+	static boolean flag2=false;
+    static Scanner scanner = new Scanner(System.in);
+
+    static Scanner read = new Scanner(System.in);
+    public TwoPhaseCommit() {
+        try {
+            Properties properties = new Properties();
+            FileInputStream input = new FileInputStream(
+                    "C:\\Users\\MSIS\\eclipse-workspace\\javaproject\\GroupWorkS\\src\\db.properties");
+            properties.load(input);
+            String connectionurl1 = "jdbc:sqlserver://172.16.51.64;databaseName=231047002;encrypt=true;trustServerCertificate=true;";
+            String username1 = properties.getProperty("username1");
+            String password1 = properties.getProperty("password1");
+            connection1 = DriverManager.getConnection(connectionurl1, username1, password1);
+            connection1.setAutoCommit(false); // Disable auto-commit
+            System.out.println("Successfully connected1");
+            
+            ///////////////////////// srusti db ////////////////////////
+            String connectionurl2 = "jdbc:sqlserver://172.16.51.64;databaseName=231047020;encrypt=true;trustServerCertificate=true;";
+            String username2 = properties.getProperty("username2");
+            String password2 = properties.getProperty("password2");
+            connection2 = DriverManager.getConnection(connectionurl2, username2, password2);
+            connection2.setAutoCommit(false); // Disable auto-commit
+            System.out.println("Successfully connected2");
+        } catch (SQLException | IOException e) {
+            System.out.println("Error occurred in Database Initialization");
+        }
+    }
+	public void tpCommit() {
+		// TODO Auto-generated method stub
+		String name;
+		int accno;
+		float bal;
+		
+		System.out.println("Enter account number: ");
+		accno=scanner.nextInt();
+		
+		System.out.println("Enter name: ");
+		name=scanner.next();
+		//System.out.println("--");
+		
+		System.out.println("Enter balance: ");
+		bal=scanner.nextFloat();
+		 // Setted auto-commit to false
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////Connection1/////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            // SQL query to insert data into the Account table
+            String insertQuery1 = "INSERT INTO Account (AccNO, name, balance) VALUES (?, ?, ?)";
+
+            try (PreparedStatement pstmt1 = connection1.prepareStatement(insertQuery1)) {
+                // Set values for parameters
+                pstmt1.setInt(1, accno); // Example AccNO
+                pstmt1.setString(2, name); // Example name
+                pstmt1.setDouble(3, bal); // Example balance
+                
+                // Execute the insert statement
+                pstmt1.executeUpdate();
+                flag1=true;
+
+
+            } catch (SQLException e) {
+                // Rollback the transaction if there is an exception
+            	System.out.println("sql exception 1");
+            }
+            
+            
+            
+            
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////Connection1  finished/////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+            
+            
+            
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////Connection2/////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// SQL query to insert data into the Account table
+String insertQuery2 = "INSERT INTO Account (AccNO, name, balance) VALUES (?, ?, ?)";
+
+try (PreparedStatement pstmt = connection2.prepareStatement(insertQuery2)) {
+// Set values for parameters
+pstmt.setInt(1, accno); // Example AccNO
+pstmt.setString(2, name); // Example name
+pstmt.setDouble(3, bal); // Example balance
+
+// Execute the insert statement
+pstmt.executeUpdate();
+flag2=true;
+
+
+
+} catch (SQLException e) {
+// Rollback the transaction if there is an exception
+System.out.println("sql exception 2");
+}
+
+
+if(flag1 && flag2)
+{
+	try {
+		connection1.commit();
+		connection2.commit();
+	} catch (SQLException e) {
+		// TODO Auto-generated catch block
+		System.out.println(" commtiing not happening....");
+	}
+	
+}
+else
+{
+	try {
+		connection1.rollback();
+		connection2.rollback();
+	} catch (SQLException e) {
+		// TODO Auto-generated catch block
+		System.out.println(" rollback not happening....");
+	}
+	
+}
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////Connection2  finished/////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+                    
+            
+	}
+}
+
